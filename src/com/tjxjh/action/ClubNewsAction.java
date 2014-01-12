@@ -15,17 +15,19 @@ import org.apache.struts2.convention.annotation.Result;
 
 import cn.cafebabe.autodao.pojo.Page;
 
+import com.tjxjh.auth.AuthEnum;
 import com.tjxjh.enumeration.TalkingUrlType;
 import com.tjxjh.po.Club;
 import com.tjxjh.po.ClubNews;
 import com.tjxjh.po.Talking;
 import com.tjxjh.po.User;
+import com.tjxjh.pojo.ClubNewsList;
 import com.tjxjh.service.ClubNewsService;
 import com.tjxjh.service.TalkingService;
 import com.tjxjh.util.Auth;
 
 
-@ParentPackage("struts-default")
+@ParentPackage("myPackage")
 @Namespace("/")
 public class ClubNewsAction extends BaseAction{
 	protected final static String UPLOAD_IMAGE_PATH="/upload/images/";
@@ -46,10 +48,11 @@ public class ClubNewsAction extends BaseAction{
 	@Resource
 	private TalkingService talkingService = null;
 	private String message;//提示信息
-	private Page page;
+	private Page page=new Page();
+	private int pageNum;
 	private Integer eachPageNumber=8;
-	private Integer currentPage=1;
-	private Integer totalPageNumber=0;
+	//private Integer currentPage=1;
+	//private Integer totalPageNumber=0;
 	User user=new User();
 	private String actionName;
 	/**
@@ -57,20 +60,21 @@ public class ClubNewsAction extends BaseAction{
 	 * 发布社团新闻action
 	 * 执行功能：上传图片，缩放，裁剪生成缩略图
 	 * 
-	 * 所有用户尚未从session中获取，直接关联到id为1的用户上
+	 * 
 	 * @return
 	 * @throws Exception
 	 */
 	@Action(value = "addClubNews", results = {
-			@Result(name = SUCCESS, location = BaseAction.FOREPART + "success.jsp")})
+	@Result(name = SUCCESS, location = BaseAction.FOREPART + "success.jsp")})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.CLUB_MANAGER,AuthEnum.CLUB_PROPRIETER})
 	public String add(){
-		club=Auth.getClubFromSession();
-		user=Auth.getUserFromSession();
+		club=Auth.getCluFromSession ();
+		//user=Auth.getUserFromSession();
 		boolean upimg=clubNewsService.uploadImage(clubnews,uploadImage, uploadImageFileName, UPLOAD_IMAGE_PATH+uploadImageFileName);
 		clubNewsService.uploadVideo(clubnews,uploadVideo, uploadVideoFileName, UPLOAD_IMAGE_PATH+uploadVideoFileName);
 		if(upimg){
 			clubnews.setClub(club);
-			Talking talking=clubNewsService.initTalking(clubnews, user);
+			Talking talking=clubNewsService.initTalking(clubnews, club.getUser());
 			clubNewsService.add(talking,clubnews);
 			message="上传成功";
 			return SUCCESS;
@@ -79,40 +83,67 @@ public class ClubNewsAction extends BaseAction{
 			return ERROR;
 		}
 	}
+	@Action(value = "allClubNews", results = {
+	@Result(name = SUCCESS,location = MANAGE+"allClubNews.jsp")})
+	public String allClubNews(){
+		
+		ClubNewsList clubNewsList = new ClubNewsList();
+		clubNewsList.setClubNewsList(clubNewsService.allClubNews(page));
+		clubNewsList.setPage(clubNewsService.clubNewsNum(page));
+		for(ClubNews c:clubNewsList.getClubNewsList()){
+			c.getClub().getName();
+		}
+		getRequestMap().put("clubNewsList", clubNewsList);
+		return SUCCESS;
+	}
 	//根据用户所在社团，查出社团发布的clubnews
 	@Action(value = "myClubNews", results = {
-			@Result(name = SUCCESS, location = BaseAction.FOREPART + "myClubNews.jsp")})
+	@Result(name = SUCCESS, location = BaseAction.FOREPART + "myClubNews.jsp")})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.USER})
 	public String findMyClubNews(){
 		user=Auth.getUserFromSession();
-		page=clubNewsService.getMyPageByHql(user,eachPageNumber,currentPage,totalPageNumber);
+		ClubNewsList clubNewsList=new ClubNewsList();
+		page=clubNewsService.getMyPageByHql(user,eachPageNumber,page.getCurrentPage(),page.getPageNumber());
 		cns=clubNewsService.findMyClubNewsByHql(page,user);
+		clubNewsList.setPage(page);
+		clubNewsList.setClubNewsList(cns);
+		
+		getRequestMap().put("clubNewsList",clubNewsList);
 		actionName="myClubNews";
 		return SUCCESS;
 		
 	}
 	//查询某个社团的clubnews
 	@Action(value = "oneClubNews", results = {
-				@Result(name = SUCCESS, location = BaseAction.FOREPART + "myClubNews.jsp")})
+	@Result(name = SUCCESS, location = BaseAction.FOREPART + "myClubNews.jsp")})
 		public String findOneClubNews(){
-			club=Auth.getClubFromSession();
-			page=clubNewsService.getOneClubPageByHql(eachPageNumber,currentPage,club,totalPageNumber);
+			if(club==null||club.getId()==null){
+				club=Auth.getCluFromSession ();
+			}
+			ClubNewsList clubNewsList=new ClubNewsList();
+			page=clubNewsService.getOneClubPageByHql(eachPageNumber,page.getCurrentPage(),club,page.getPageNumber());
 			cns=clubNewsService.findOneClubNewsByHql(page,club);
+			clubNewsList.setPage(page);
+			clubNewsList.setClubNewsList(cns);
+			getRequestMap().put("clubNewsList",clubNewsList);
 			actionName="oneClubNews";
 			return SUCCESS;
 			
 		}
 	//管理员查看所在社团的clubnews,可以修、删除
 		@Action(value = "adminFindOneClubNews", results = {
-					@Result(name = SUCCESS, location = BaseAction.FOREPART + "myClubNews.jsp")})
+		@Result(name = SUCCESS, location = BaseAction.FOREPART + "myClubNews.jsp")})
+		@com.tjxjh.annotation.Auth(auths = {AuthEnum.ADMIN})
 			public String adminFindOneClubNews(){
 				findOneClubNews();
 				actionName="adminFindOneClubNews";
 				return SUCCESS;
 				
 		}
-	//管理员删除所在社团的Clubnews
+		//社团管理员删除所在社团的Clubnews
 		@Action(value = "deleteClubNews", results = {
-				@Result(name = SUCCESS,type = REDIRECT_ACTION, location ="adminFindOneClubNews")})
+		@Result(name = SUCCESS,type = REDIRECT_ACTION, location ="adminFindOneClubNews")})
+		@com.tjxjh.annotation.Auth(auths = {AuthEnum.CLUB_MANAGER,AuthEnum.CLUB_PROPRIETER})
 			public String deleteClubNews(){
 				user=Auth.getUserFromSession();
 				clubnews=clubNewsService.findByHql(user, clubnews);
@@ -123,9 +154,19 @@ public class ClubNewsAction extends BaseAction{
 				return SUCCESS;
 						
 		}
+		//校江湖管理人员删除社团信息
+		@Action(value = "adminDeleteClubNews", results = {
+		@Result(name = SUCCESS,type = REDIRECT_ACTION, location ="allClubNews", params={"pageNum","${pageNum}"})})
+		@com.tjxjh.annotation.Auth(auths = {AuthEnum.ADMIN})
+			public String adminDeleteClubNews(){
+				clubNewsService.delete(clubnews);
+				return SUCCESS;
+						
+		}
 		//管理员修改社团发布的Clubnews
 		@Action(value = "preModifyClubNews", results = {
-				@Result(name = SUCCESS, location = BaseAction.FOREPART + "modifyClubNews.jsp")})
+		@Result(name = SUCCESS, location = BaseAction.FOREPART + "modifyClubNews.jsp")})
+		@com.tjxjh.annotation.Auth(auths = {AuthEnum.USER})
 			public String preModifyClubNews(){
 				user=Auth.getUserFromSession();
 				clubnews=clubNewsService.findByHql(user, clubnews);
@@ -139,7 +180,8 @@ public class ClubNewsAction extends BaseAction{
 			}	
 		//管理员修改社团发布的Clubnews 说说user 应改为社团对应的user
 		@Action(value = "modifyClubNews", results = {
-				@Result(name = SUCCESS,type = REDIRECT_ACTION, location ="adminFindOneClubNews")})
+		@Result(name = SUCCESS,type = REDIRECT_ACTION, location ="adminFindOneClubNews")})
+		@com.tjxjh.annotation.Auth(auths = {AuthEnum.USER})
 			public String modifyClubNews(){
 			user=Auth.getUserFromSession();
 			ClubNews oldclubnews=clubNewsService.findByHql(user, clubnews);
@@ -217,23 +259,17 @@ public class ClubNewsAction extends BaseAction{
 	public void setPage(Page page) {
 		this.page = page;
 	}
+	public int getPageNum() {
+		return pageNum;
+	}
+	public void setPageNum(int pageNum) {
+		this.pageNum = pageNum;
+	}
 	public Integer getEachPageNumber() {
 		return eachPageNumber;
 	}
 	public void setEachPageNumber(Integer eachPageNumber) {
 		this.eachPageNumber = eachPageNumber;
-	}
-	public Integer getCurrentPage() {
-		return currentPage;
-	}
-	public void setCurrentPage(Integer currentPage) {
-		this.currentPage = currentPage;
-	}
-	public Integer getTotalPageNumber() {
-		return totalPageNumber;
-	}
-	public void setTotalPageNumber(Integer totalPageNumber) {
-		this.totalPageNumber = totalPageNumber;
 	}
 
 	public File getUploadVideo() {

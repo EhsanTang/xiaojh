@@ -25,8 +25,9 @@ public class BaseAction extends BaseStruts2Action
 	
 	protected void clearSession()
 	{
-		super.getSessionMap().remove(USER);
-		super.getSessionMap().remove(MERCHANT);
+		super.getSessionMap().clear();
+		//super.getSessionMap().remove(USER);
+		//super.getSessionMap().remove(MERCHANT);
 	}
 	
 	protected void saveClubMember(ClubMember clubMember)
@@ -47,5 +48,19 @@ public class BaseAction extends BaseStruts2Action
 	protected ClubMember currentClubMember()
 	{
 		return (ClubMember) super.getRequestMap().get(CLUB_MEMBER);
+	}
+	
+	protected User currentUserOrMerchant()
+	{
+		User currentUser = currentUser();
+		if(currentUser == null)
+		{
+			currentUser = currentMerchant().getUser();
+		}
+		if(currentUser == null)
+		{
+			throw new RuntimeException("用户未登陆");
+		}
+		return currentUser;
 	}
 }

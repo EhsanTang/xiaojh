@@ -3,6 +3,8 @@ package com.tjxjh.action;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import javax.annotation.Resource;
 
@@ -14,33 +16,51 @@ import org.apache.struts2.convention.annotation.Result;
 
 import cn.cafebabe.autodao.pojo.Page;
 
+import com.opensymphony.xwork2.ActionContext;
+import com.tjxjh.annotation.Auth;
+import com.tjxjh.annotation.Keyword;
+import com.tjxjh.auth.AuthEnum;
 import com.tjxjh.enumeration.UserStatus;
+import com.tjxjh.interceptor.AuthInterceptor.AdminAuth;
 import com.tjxjh.po.Club;
 import com.tjxjh.po.Merchant;
 import com.tjxjh.po.OnlineActivity;
 import com.tjxjh.po.Picture;
 import com.tjxjh.po.Talking;
 import com.tjxjh.po.User;
+import com.tjxjh.pojo.ClubList;
+import com.tjxjh.pojo.IndexTalking;
+import com.tjxjh.pojo.MerchantList;
+import com.tjxjh.pojo.PictureList;
+import com.tjxjh.pojo.UserList;
 import com.tjxjh.service.ClubService;
-import com.tjxjh.service.OnlineActivityService;
 import com.tjxjh.service.MailService;
+import com.tjxjh.service.OnlineActivityService;
 import com.tjxjh.service.PictureService;
+import com.tjxjh.service.TalkingCommentService;
 import com.tjxjh.service.TalkingService;
 import com.tjxjh.service.UserService;
 import com.tjxjh.util.CodeUtil;
 
-@ParentPackage("struts-default")
+@ParentPackage("myPackage")
 @Namespace("/")
 public class UserAction extends BaseAction
 {
-	static final String REGISTER_VALIDATE = "registerValidate";
+	static final String MY_FOCUS = "myFocus";
+	public static final String RESET_USER_PASSWORD_INPUT = "resetUserPasswordInput";
+	static final String RESET_USER_PASSWORD = "resetUserPassword";
+	static final String FIND_USER_PASSWORD_INPUT = "findUserPasswordInput";
+	static final String FIND_USER_PASSWORD = "findUserPassword";
+	static final String CHANGE_USER_PASSWORD_INPUT = "changeUserPasswordInput";
+	static final String CHANGE_USER_PASSWORD = "changeUserPassword";
+	public static final String REGISTER_VALIDATE = "registerValidate";
 	static final String MANAGER_LOGIN = "managerLogin";
 	static final String MANAGER_LOGIN_INPUT = "managerLoginInput";
 	static final String MY_INVITED = "myInvited";
 	static final String LOGOUT = "logout";
 	static final String UPDATE_USER_INPUT = "updateUserInput";
 	static final String UPDATE_USER = "updateUser";
-	static final String REFRESH_USER = "refresh";
+	static final String REFRESH_USER = "refreshUser";
 	static final String REGISTER = "register";
 	static final String USER_LOGIN = "userLogin";
 	static final String REGISTER_INPUT = "registerInput";
@@ -50,12 +70,12 @@ public class UserAction extends BaseAction
 	public final static String PORTRAIT_FOLDER = "upload/portrait/";
 	private static final long serialVersionUID = 7096555953593277984L;
 	// 分页信息
-	private Page page;
-	private Integer eachPageNumber = 10;
-	private Integer currentPage = 1;
-	private Integer totalPageNumber = 0;
+	private Page page=new Page();
+	private Integer eachPageNumber = 8;
+	//private Integer currentPage = 1;
+	//private Integer totalPageNumber = 0;
 	// talking
-	private List<Talking> taks = new ArrayList<Talking>();
+	private List<IndexTalking> taks = new ArrayList<IndexTalking>();
 	private String message = "";
 	// 相册
 	private List<Picture> pics = new ArrayList<Picture>();
@@ -72,15 +92,33 @@ public class UserAction extends BaseAction
 	@Resource
 	private MailService mailService = null;
 	@Resource
+	private TalkingCommentService talkingCommentService = null;
+	@Resource
 	private OnlineActivityService onlineActivityService = null;
 	private User user = null;
 	protected File portrait = null;
 	protected String portraitFileName = null, code = null;
 	private Integer type = null;
+	private int pageNum;
+	private String actionName;
+	
+	@Action(value = "allUser", results = {@Result(name = SUCCESS, location = MANAGE
+			+ "allUser.jsp")})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.ADMIN})
+	public String allUser()
+	{
+		Page page = new Page(pageNum * Page.getDefaultPageNumber() + 1);
+		page.setCurrentPage(pageNum);
+		UserList userList = new UserList();
+		userList.setUserList(userService.allUsers(page));
+		userList.setPage(userService.userNum(page));
+		getRequestMap().put("userList", userList);
+		return SUCCESS;
+	}
 	
 	@Action(value = USER_LOGIN, results = {
 			@Result(name = SUCCESS, type = REDIRECT_ACTION, location = IndexAction.INDEX),
-			@Result(name = INPUT, type = REDIRECT_ACTION, location = LOGIN_INPUT, params = {
+			@Result(name = INPUT, type = REDIRECT_ACTION, location = IndexAction.INDEX, params = {
 					"msg", "用户名或密码错误!"})})
 	public String userLogin()
 	{
@@ -92,19 +130,54 @@ public class UserAction extends BaseAction
 		super.clearSession();
 		if((user = userService.login(user, status)) != null)
 		{
-			// 将相关的用户id存入session
-			super.saveUser(user);
-			super.getSessionMap().put("relativeUsers",
-					talkingService.preGetRelativeUserId(user));
-			// 将相关的用户id存入session
-			super.getSessionMap().put("relativeUsers",
-					talkingService.preGetRelativeUserId(user));
+			saveUser(user);
 			return SUCCESS;
 		}
 		else
 		{
 			return INPUT;
 		}
+	}
+	
+	@Override
+	protected void saveUser(User user)
+	{
+		// 将相关的用户id存入session
+		user = userService.findById(user.getId());
+		super.saveUser(user);
+		List<User> us = preGetRelativeUserId(user);
+		super.getSessionMap().put("relativeUsers", us);
+	}
+	
+	/****************************** End:我相关的说说 ***************************************************************************************/
+	public List<User> preGetRelativeUserId(User user)
+	{
+		List<User> users = new ArrayList<User>();
+		// 查找用户所在社团对应的id号
+		users.addAll(userService.clubUsers(user));
+		// 关注的社团
+		Set<Club> clubs = user.getFocusClubs();
+		for(Club c : clubs)
+		{
+			users.add(userService.findById(c.getUser().getId()));
+		}
+		// 将自己放入
+		ActionContext context = ActionContext.getContext();
+		Map<String, Object> session = context.getSession();
+		users.add((User) session.get("user"));
+		// 关注的用户
+		Set<User> users2 = user.getUsersForTargetUserId();
+		for(User u : users2)
+		{
+			users.add(userService.findById(u.getId()));
+		}
+		// 关注的商家
+		Set<Merchant> merchants = user.getMerchants();
+		for(Merchant m : merchants)
+		{
+			users.add(userService.findById(m.getUser().getId()));
+		}
+		return users;
 	}
 	
 	@Action(value = MANAGER_LOGIN, results = {
@@ -122,18 +195,19 @@ public class UserAction extends BaseAction
 			@Result(name = INPUT, type = REDIRECT_ACTION, location = REGISTER_INPUT, params = {
 					"msg", "请正确输入信息!"}),
 			@Result(name = ERROR, location = FOREPART + ERROR_PAGE)})
+	@Keyword
 	public String register()
 	{
+		super.clearSession();
 		if(portrait != null)
 		{
 			fillPortraitPathToUser(user.getName());
 		}
-		String[] email = user.getEmail().split("@");
-		if(email.length != 2)
+		if(!mailService.checkEmail(user.getEmail()))
 		{
 			return INPUT;
 		}
-		super.getRequestMap().put("email", email[1]);
+		super.getRequestMap().put("email", user.getEmail().split("@")[1]);
 		if(userService.register(user, portrait))
 		{
 			if(mailService.sendRegisterLetter(user))
@@ -152,15 +226,22 @@ public class UserAction extends BaseAction
 	}
 	
 	@Action(value = REGISTER_VALIDATE, results = {
-			@Result(name = SUCCESS, type = REDIRECT_ACTION, location = IndexAction.INDEX),
-			@Result(name = INPUT, type = REDIRECT_ACTION, location = MANAGER_LOGIN_INPUT, params = {
+			@Result(name = SUCCESS, type = REDIRECT_ACTION, location = REFRESH_USER
+					+ IndexAction.INDEX),
+			@Result(name = INPUT, type = REDIRECT_ACTION, location = IndexAction.INDEX, params = {
 					"msg", "注册验证失败(可能链接已过期)!"})})
 	public String registerValidate()
 	{
-		user = mailService.validateRegisterUser(code);
+		return validateEmail();
+	}
+	
+	private String validateEmail()
+	{
+		super.clearSession();
+		User user = mailService.fromValidateEmail(code);
 		if(user != null)
 		{
-			super.saveUser(user);
+			saveUser(user);
 			return SUCCESS;
 		}
 		else
@@ -169,8 +250,10 @@ public class UserAction extends BaseAction
 		}
 	}
 	
+	@SuppressWarnings("static-access")
 	@Action(value = UPDATE_USER, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = REFRESH_USER
 			+ MAIN)})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.USER})
 	public String updateUser()
 	{
 		if(portrait != null)
@@ -181,6 +264,95 @@ public class UserAction extends BaseAction
 		}
 		userService.update(user, portrait);
 		return SUCCESS;
+	}
+	
+	@Action(value = CHANGE_USER_PASSWORD, results = {
+			@Result(name = SUCCESS, type = REDIRECT_ACTION, location = "${#request.path}"),
+			@Result(name = INPUT, type = REDIRECT_ACTION, location = CHANGE_USER_PASSWORD_INPUT, params = {
+					"msg", "密码错误!"})})
+	@Auth(auths = {AuthEnum.USER, AuthEnum.MERCHANT})
+	public String changeUserPassword()
+	{
+		if(super.currentUser() != null)
+		{
+			user.setId(super.currentUser().getId());
+			super.getRequestMap().put("path", REFRESH_USER + CENTER);
+		}
+		else if(super.currentMerchant() != null)
+		{
+			user.setId(super.currentMerchant().getUser().getId());
+			super.getRequestMap().put(
+					"path",
+					MerchantAction.REFRESH_MERCHANT
+							+ MerchantAction.UPDATE_MERCHANT_INPUT);
+		}
+		else
+		{
+			return ERROR;
+		}
+		user.setPassword(CodeUtil.md5(user.getPassword()));
+		if(userService.exist(user))
+		{
+			userService.changeUserPassword(user, code);
+			return SUCCESS;
+		}
+		return INPUT;
+	}
+	
+	@Action(value = RESET_USER_PASSWORD, results = {
+			@Result(name = SUCCESS, type = REDIRECT_ACTION, location = IndexAction.INDEX),
+			@Result(name = INPUT, type = REDIRECT_ACTION, location = IndexAction.INDEX, params = {
+					"msg", "重置密码失败(可能链接已过期)!"})})
+	public String resetUserPassword()
+	{
+		if(validateEmail().equals(SUCCESS))
+		{
+			userService.changeUserPassword(super.currentUser(),
+					user.getPassword());
+			super.clearSession();
+			return SUCCESS;
+		}
+		return INPUT;
+	}
+	
+	// @Action(value = RESET_USER_PASSWORD_INPUT, results = {
+	// @Result(name = SUCCESS, location = FOREPART + RESET_USER_PASSWORD
+	// + JSP),
+	// @Result(name = INPUT, type = REDIRECT_ACTION, location =
+	// IndexAction.INDEX, params = {
+	// "msg", "重置密码失败(可能链接已过期)!"})})
+	// public String resetUserPasswordInput()
+	// {
+	// return validateEmail();
+	// }
+	@Action(value = FIND_USER_PASSWORD, results = {
+			@Result(name = SUCCESS, type = REDIRECT_ACTION, location = "emailLoginJsp", params = {
+					"email", "${#request.email}"}),
+			@Result(name = INPUT, type = REDIRECT_ACTION, location = FIND_USER_PASSWORD_INPUT, params = {
+					"msg", "请输入正确的邮箱"}),
+			@Result(name = NONE, type = REDIRECT_ACTION, location = FIND_USER_PASSWORD_INPUT, params = {
+					"msg", "此邮箱未注册"}),
+			@Result(name = ERROR, type = REDIRECT_ACTION, location = FOREPART
+					+ ERROR_PAGE)})
+	public String findUserPassword()
+	{
+		if(!mailService.checkEmail(user.getEmail()))
+		{
+			return INPUT;
+		}
+		super.getRequestMap().put("email", user.getEmail().split("@")[1]);
+		if(!userService.exist(user))
+		{
+			return NONE;
+		}
+		if(mailService.sendFindUserPsdLetter(user))
+		{
+			return SUCCESS;
+		}
+		else
+		{
+			return NONE;
+		}
 	}
 	
 	private void fillPortraitPathToUser(String userName)
@@ -196,59 +368,135 @@ public class UserAction extends BaseAction
 		return SUCCESS;
 	}
 	
+	/**
+	 * 我的相册或根据id查看好友相册
+	 * 
+	 * @return
+	 * @throws Exception
+	 */
+	@Action(value = "photos", results = {@Result(name = SUCCESS, location = BaseAction.FOREPART
+			+ "userHomePhotos.jsp")})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.USER})
+	public String findMyPicture()
+	{
+		if(user == null || user.getId() == null)
+		{
+			user = (User) getSessionMap().get("user");
+			user = userService.findById(user.getId());
+			String temp = user.getSchool().getName();
+			getRequestMap().put("my", "yes");
+		}
+		else
+		{
+			user = userService.findById(user.getId());
+			String temp = user.getSchool().getName();
+			User tmep = (User) getSessionMap().get("user");
+			int i = user.getId();
+			int j = tmep.getId();
+			if(i == j)
+			{
+				getRequestMap().put("my", "yes");
+			}
+			else
+			{
+				getRequestMap().put("my", "no");
+			}
+		}
+		PictureList pictureList=new PictureList();
+		page = pictureService.getMyPageByHql(user, eachPageNumber, page.getCurrentPage(),
+				page.getPageNumber());
+		pics = pictureService.findMyPictureByHql(page, user);
+		pictureList.setPage(page);
+		pictureList.setPics(pics);
+		getRequestMap().put("pictureList", pictureList);
+		actionName="photos";
+		return SUCCESS;
+	}
+	
 	// main :userHome
 	@Action(value = MAIN, results = {@Result(name = SUCCESS, location = BaseAction.FOREPART
 			+ MAIN + JSP)})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.USER})
 	public String home()
 	{
+		initUserHome();
+		/************************** 指定用户说说说说 *******************************************/
+		page = talkingService.getMyPageByHql(user, eachPageNumber, page.getCurrentPage(), 1);
+		List<Talking> temp = talkingService.findMyTalkingByHql(page, user);
+		for(Talking t : temp)
+		{
+			IndexTalking it = new IndexTalking();
+			it.setT(t);
+			it.setTcs(talkingCommentService.findByHql(t.getId()));
+			taks.add(it);
+		}
+		getRequestMap().put("actionName", "talking");//更多连接地址
+		return SUCCESS;
+	}
+	
+	private void initUserHome()
+	{
+		if(user == null || user.getId() == null)
+		{
+			user = (User) getSessionMap().get("user");
+			user = userService.findById(user.getId());
+			getRequestMap().put("my", "yes");
+		}
+		else
+		{
+			user = userService.findById(user.getId());
+			User tmep = (User) getSessionMap().get("user");
+			int i = user.getId();
+			int j = tmep.getId();
+			if(i == j)
+			{
+				getRequestMap().put("my", "yes");
+			}
+			else
+			{
+				getRequestMap().put("my", "no");
+			}
+		}
+		try
+		{
+			String temp = user.getSchool().getName();
+		}
+		catch(Exception e)
+		{}
 		/************************** TT *******************************************/
-		List<User> focusUserList = userService.getFocusList(User.class,
-				(User) getSessionMap().get("user"));
+		List<User> focusUserList = userService.getFocusList(User.class, user);
 		if(focusUserList.size() > 9)
 		{
 			focusUserList = focusUserList.subList(0, 9);
 		}
 		getRequestMap().put("focusUserList", focusUserList);
-		List<Club> focusClubList = userService.getFocusList(Club.class,
-				(User) getSessionMap().get("user"));
+		List<Club> focusClubList = userService.getFocusList(Club.class, user);
 		if(focusClubList.size() > 9)
 		{
 			focusClubList = focusClubList.subList(0, 9);
 		}
 		getRequestMap().put("focusClubList", focusClubList);
 		List<Merchant> focusMerchantList = userService.getFocusList(
-				Merchant.class, (User) getSessionMap().get("user"));
+				Merchant.class, user);
 		if(focusMerchantList.size() > 9)
 		{
 			focusMerchantList = focusMerchantList.subList(0, 9);
 		}
 		getRequestMap().put("focusMerchantList", focusMerchantList);
-		super.getRequestMap().put("allUsers", userService.allUsers());
-		if(null == user || null == user.getId())
-		{
-			user = (User) getSessionMap().get("user");
-			user = userService.findById(user.getId());
-		}
-		else
-		{
-			user = userService.findById(user.getId());
-		}
 		/************************** 指定用户相册 *******************************************/
-		page = pictureService.getMyPageByHql(user, 1, currentPage, 1);
+		page = pictureService.getMyPageByHql(user, 1, 1, 1);
 		pics = pictureService.findMyPictureByHql(page, user);
 		/*************************** 指定用户线上活动 *****************************************/
 		page = onlineActivityService.getOneOnlineActivityPageByHql(4,
-				currentPage, 1, null, null, user);
+				1, 1, null, null, user);
 		onlineActs = onlineActivityService.findOneClubOnlineActivityByHql(page,
 				null, null, user);
-		/************************** 指定用户说说说说 *******************************************/
-		page = talkingService.getMyPageByHql(user, 10, currentPage, 1);
-		taks = talkingService.findMyTalkingByHql(page, user);
-		return SUCCESS;
+		getRequestMap().put("onlineActs", onlineActs);
 	}
 	
 	@Action(value = CENTER, results = {@Result(name = SUCCESS, location = BaseAction.FOREPART
 			+ CENTER + JSP)})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.USER})
 	public String center()
 	{
 		/************************** TT *******************************************/
@@ -273,21 +521,31 @@ public class UserAction extends BaseAction
 			focusMerchantList = focusMerchantList.subList(0, 9);
 		}
 		getRequestMap().put("focusMerchantList", focusMerchantList);
-		super.getRequestMap().put("allUsers", userService.allUsers());
+		// super.getRequestMap().put("allUsers", userService.allUsers());
 		user = (User) getSessionMap().get("user");
 		/************************** 相册 *******************************************/
-		page = pictureService.getRelativeByHql(eachPageNumber, currentPage,
-				totalPageNumber);
+		page = pictureService.getRelativeByHql(eachPageNumber, 1,
+				0);
 		pics = pictureService.findRelativePictureByHql(page);
 		/************************* 相关说说 *******************************************/
 		page = talkingService.getRelativePageByHql(user, eachPageNumber,
-				currentPage, 1);
-		taks = talkingService.findRelativeTalkingByHql(page, user);
+				1, 1);
+		List<Talking> temp = talkingService
+				.findRelativeTalkingByHql(page, user);
+		for(Talking t : temp)
+		{
+			IndexTalking it = new IndexTalking();
+			it.setT(t);
+			it.setTcs(talkingCommentService.findByHql(t.getId()));
+			taks.add(it);
+		}
+		getRequestMap().put("actionName", "relativeTalking");//更多连接地址
 		return SUCCESS;
 	}
 	
 	@Action(value = MY_INVITED, results = {@Result(name = SUCCESS, location = FOREPART
 			+ MY_INVITED + JSP)})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.USER})
 	public String myInvited()
 	{
 		super.getRequestMap().put(MY_INVITED,
@@ -302,17 +560,25 @@ public class UserAction extends BaseAction
 		return SUCCESS;
 	}
 	
-	@Action(value = "myFocus", results = {@Result(name = SUCCESS, location = BaseAction.FOREPART
+	@Action(value = MY_FOCUS, results = {@Result(name = SUCCESS, location = BaseAction.FOREPART
 			+ "myFocus.jsp")})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.USER})
 	public String myFocus()
 	{
 		// List<User> focusList = sessionUser.getUsersForTargetUserId();
+		Page page = new Page(pageNum * eachPageNumber + 1);
+		page.setEachPageNumber(eachPageNumber);
+		page.setCurrentPage(pageNum);
 		switch(type)
 		{
 			case (0):
 				List<User> userList = userService.getFocusList(User.class,
-						(User) getSessionMap().get("user"));
-				getRequestMap().put("focusList", userList);
+						(User) getSessionMap().get("user"), page);
+				UserList userListPojo = new UserList();
+				userListPojo.setUserList(userList);
+				userListPojo.setPage(userService.getFocusNum(User.class,
+						(User) getSessionMap().get("user"), page));
+				getRequestMap().put("focusList", userListPojo);
 				// for(User u:userList){
 				// checkList.add(u.getId());
 				// }
@@ -320,8 +586,12 @@ public class UserAction extends BaseAction
 				break;
 			case (1):
 				List<Club> clubList = userService.getFocusList(Club.class,
-						(User) getSessionMap().get("user"));
-				getRequestMap().put("focusList", clubList);
+						(User) getSessionMap().get("user"), page);
+				ClubList clubListPojo = new ClubList();
+				clubListPojo.setClubList(clubList);
+				clubListPojo.setPage(userService.getFocusNum(Club.class,
+						(User) getSessionMap().get("user"), page));
+				getRequestMap().put("focusList", clubListPojo);
 				// for(Club u:clubList){
 				// checkList.add(u.getId());
 				// }
@@ -329,8 +599,14 @@ public class UserAction extends BaseAction
 				break;
 			case (2):
 				List<Merchant> merchantList = userService.getFocusList(
-						Merchant.class, (User) getSessionMap().get("user"));
-				getRequestMap().put("focusList", merchantList);
+						Merchant.class, (User) getSessionMap().get("user"),
+						page);
+				MerchantList merchantListPojo = new MerchantList();
+				merchantListPojo.setMerchantList(merchantList);
+				merchantListPojo.setPage(userService.getFocusNum(
+						Merchant.class, (User) getSessionMap().get("user"),
+						page));
+				getRequestMap().put("focusList", merchantListPojo);
 				// for(Merchant u:merchantList){
 				// checkList.add(u.getId());
 				// }
@@ -349,11 +625,23 @@ public class UserAction extends BaseAction
 					+ "register.jsp")}),
 			@Action(value = UPDATE_USER_INPUT, results = {@Result(name = SUCCESS, location = BaseAction.FOREPART
 					+ UPDATE_USER + JSP)}),
-			@Action(value = "manageIndex", results = {@Result(name = SUCCESS, location = "/WEB-INF/web/manage/index.jsp")}),
+			@Action(value = RESET_USER_PASSWORD_INPUT, results = {@Result(name = SUCCESS, location = FOREPART
+					+ RESET_USER_PASSWORD + JSP)}),
+			@Action(value = CHANGE_USER_PASSWORD_INPUT, results = {@Result(name = SUCCESS, location = FOREPART
+					+ CHANGE_USER_PASSWORD + JSP)}),
+			@Action(value = FIND_USER_PASSWORD_INPUT, results = {@Result(name = SUCCESS, location = BaseAction.FOREPART
+					+ FIND_USER_PASSWORD + JSP)}),
 			@Action(value = "manageTop", results = {@Result(name = SUCCESS, location = "/WEB-INF/web/manage/admin_top.jsp")}),
 			@Action(value = "manageLeft", results = {@Result(name = SUCCESS, location = "/WEB-INF/web/manage/left.jsp")}),
 			@Action(value = "manageRight", results = {@Result(name = SUCCESS, location = "/WEB-INF/web/manage/right.jsp")})})
 	public String page()
+	{
+		return SUCCESS;
+	}
+	
+	@Action(value = "manageIndex", results = {@Result(name = SUCCESS, location = "/WEB-INF/web/manage/index.jsp")})
+	// @Auth(type = AdminAuth.class)
+	public String adminAuth()
 	{
 		return SUCCESS;
 	}
@@ -423,32 +711,12 @@ public class UserAction extends BaseAction
 		this.eachPageNumber = eachPageNumber;
 	}
 	
-	public Integer getCurrentPage()
-	{
-		return currentPage;
-	}
-	
-	public void setCurrentPage(Integer currentPage)
-	{
-		this.currentPage = currentPage;
-	}
-	
-	public Integer getTotalPageNumber()
-	{
-		return totalPageNumber;
-	}
-	
-	public void setTotalPageNumber(Integer totalPageNumber)
-	{
-		this.totalPageNumber = totalPageNumber;
-	}
-	
-	public List<Talking> getTaks()
+	public List<IndexTalking> getTaks()
 	{
 		return taks;
 	}
 	
-	public void setTaks(List<Talking> taks)
+	public void setTaks(List<IndexTalking> taks)
 	{
 		this.taks = taks;
 	}
@@ -522,5 +790,21 @@ public class UserAction extends BaseAction
 			OnlineActivityService onlineActivityService)
 	{
 		this.onlineActivityService = onlineActivityService;
+	}
+	
+	public void setTalkingCommentService(
+			TalkingCommentService talkingCommentService)
+	{
+		this.talkingCommentService = talkingCommentService;
+	}
+	
+	public int getPageNum()
+	{
+		return pageNum;
+	}
+	
+	public void setPageNum(int pageNum)
+	{
+		this.pageNum = pageNum;
 	}
 }

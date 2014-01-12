@@ -1,6 +1,6 @@
 <%@ page language="java" import="java.util.*" pageEncoding="utf-8"%>
 <%@ taglib uri="/struts-tags" prefix="s" %>
-<%@ taglib prefix="wst" uri="/webSupportTag"%>
+<%@ taglib prefix="w" uri="/webSupportTag"%>
 <%
 String path = request.getContextPath();
 String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.getServerPort()+path+"/";
@@ -119,16 +119,15 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
   
 	<body>
 		<div>
-			<s:property value="#request.type" />
 			<s:if test="%{#request.type==0}">
 				<table>
     				<tr>
-    					<td colspan="8">找人：<s:property value="#request.clubMembers" /></td>
+    					<td colspan="8">找人：</td>
     				</tr>
     				<s:iterator value="#request.searchResult.userList">
     				<tr>	
     					<td>
-    						<s:property value="name" />
+    						<a href="userHome?user.id=<s:property value="id" />" ><s:property value="name" /></a>
     					</td>
     					<td>
     						<s:property value="sex" />
@@ -153,7 +152,7 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
 							</s:if> <s:else>
 								<s:if test="#request.clubMembers[id] == null">
 									<s:a
-										href="clubAddUser?user.id=%{id}&text=%{#request.searchText}&club.id=%{club.id}">添加</s:a>
+										href="clubAddUser?user.id=%{id}&text=%{#request.searchText}&club.id=%{club.id}&pageNum=%{searchResult.page.currentPage}">添加</s:a>
 								</s:if>
 								<s:elseif test="#request.clubMembers[id].role.name() == 'NORMAL'">
 									<s:if test="#request.clubMembers[id].status.name() == 'NO_CHECK'">
@@ -162,8 +161,8 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
 											已发出邀请
 										</s:if>
 										<s:else>
-											<s:a href="clubAcceptInvited?user.id=%{id}&club.id=%{club.id}">接受申请</s:a>
-											<s:a href="clubRefuseInvited?user.id=%{id}&club.id=%{club.id}">拒绝</s:a>
+											<s:a href="clubAcceptInvited?user.id=%{id}&text=%{#request.searchText}&club.id=%{club.id}&pageNum=%{searchResult.page.currentPage}">接受申请</s:a>
+											<s:a href="clubRefuseInvited?user.id=%{id}&text=%{#request.searchText}&club.id=%{club.id}&pageNum=%{searchResult.page.currentPage}">拒绝</s:a>
 										</s:else>
 									</s:if>
 									<s:else>
@@ -193,25 +192,28 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
 							</s:else>
     					</s:if>
     					<!-- 否则，从其他入口进入，无club操作 -->
-    					<s:else>
+    					<s:elseif test="%{#session.user.id!=id}">
     						<s:if test="%{#request.userMap[id]==null}">
 	    						<input id="<s:property value="id" />" type="button" value="关注" onclick="focusUser(<s:property value="id" />)"/>
 	    					</s:if>
 	    					<s:else>
 	    						<input id="<s:property value="id" />" type="button" disabled="disabled" value="已关注"/>
 	    					</s:else>
-    					</s:else>
+    					</s:elseif>
     					</td>
     					<td>
+    					<s:if test="%{#session.user.id!=id}">
     						<s:a href="personalLetterInput?targetUser.id=%{id}&targetUser.name=%{name}" >发私信</s:a>
+    					</s:if>
     					</td>
     				</tr>
     				</s:iterator>
     			</table>
 				<div id="pageController">
-					<span><a href="searchUser?searchText=<s:property value="#request.searchText" />&pageNum=<s:property value="searchResult.page.currentPage-1" />&club.id=<s:property value="club.id"/>">上一页</a></span>&nbsp;
+					<w:page url="searchUser?searchText=%{#request.searchText}&club.id=%{club.id}" useSingleProperty="false" pageNumberPropertyName="pageNum" value="searchResult.page" />
+					<%-- <span><a href="searchUser?searchText=<s:property value="#request.searchText" />&pageNum=<s:property value="searchResult.page.currentPage-1" />&club.id=<s:property value="club.id"/>">上一页</a></span>&nbsp;
 					<span><a href="searchUser?searchText=<s:property value="#request.searchText" />&pageNum=<s:property value="searchResult.page.currentPage+1" />&club.id=<s:property value="club.id"/>">下一页</a></span>
-					<span>共 <s:property value="searchResult.page.pageNumber" />页</span>
+					<span>共 <s:property value="searchResult.page.pageNumber" />页</span> --%>
 					<%-- <s:if test="#request.searchResult.userList.size() != 0">
 						<s:if test="%{#request.searchResult.page.currentPage != 1}">
 							<span class="prev"> <a onclick="">首页</a> </span>
@@ -240,7 +242,7 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
     				<s:iterator value="#request.searchResult.clubList" >
     				<tr>	
     					<td>
-    						<s:property value="name" />
+    						<s:a href="clubMain?club.id=%{id}"><s:property value="name" /></s:a>
     					</td>
     					<td>
     						<s:property value="school.name" />
@@ -261,7 +263,7 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
     					<td>
     					<s:if test="%{#session.user!=null}" >
     						<!-- 若入口为社团页，且role不是普通社员，则显示社团操作 -->
-	    					<s:if test="%{#request.clubMember != null&&#request.clubMember.role.name()!='NORMAL'}">
+	    					<s:if test="%{#request.clubMember != null&&club.id != id&&#request.clubMember.role.name()!='NORMAL'}">
 	    						<s:if test="id in #request.clubCheckList">
 	    							<input id="c_<s:property value="id" />" type="button" disabled="disabled" value="社团已关注"/>
 	    						</s:if>
@@ -292,9 +294,11 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
     				</s:iterator>
     			</table>
     			<div>
-					<span><a href="searchClub?searchText=<s:property value="#request.searchText" />&pageNum=<s:property value="searchResult.page.currentPage-1" />&club.id=<s:property value="club.id"/>">上一页</a></span>&nbsp;
+    				<w:page url="searchClub?searchText=%{#request.searchText}&club.id=%{club.id}" useSingleProperty="false" pageNumberPropertyName="pageNum" value="searchResult.page" />
+					<%-- <span><a href="searchClub?searchText=<s:property value="#request.searchText" />&pageNum=<s:property value="searchResult.page.currentPage-1" />&club.id=<s:property value="club.id"/>">上一页</a></span>&nbsp;
 					<span><a href="searchClub?searchText=<s:property value="#request.searchText" />&pageNum=<s:property value="searchResult.page.currentPage+1" />&club.id=<s:property value="club.id"/>">下一页</a></span>
-					<span>共 <s:property value="searchResult.page.pageNumber" />页</span>
+					<span>共 <s:property value="searchResult.page.pageNumber" />页</span> --%>
+					
 				</div>
 			</s:elseif>
 			<s:elseif test="%{#request.type==2}">
@@ -305,7 +309,7 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
     			<s:iterator value="#request.searchResult.merchantList" >
     			<tr>	
     				<td>
-    					<s:property value="name" />
+    					<a href="merchant?merchant.id=<s:property value="id" />" ><s:property value="name" /></a>
     				</td>
     				<td>
     					<s:property value="type" />
@@ -342,7 +346,7 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
 		    				</s:else>
 	    				</s:else>
     				</s:if>
-    				<s:elseif test="%{#session.merchant!=null}">
+    				<s:elseif test="%{#session.merchant!=null&&#session.merchant.id!=id}">
     					<s:if test="%{id in #request.checkList}">
 	    					<input id="m_<s:property value="id" />" type="button" disabled="disabled" value="已关注"/>
 	    				</s:if>
@@ -355,9 +359,10 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
     			</s:iterator>
     		</table>
     		<div>
-				<span><a href="searchMerchant?searchText=<s:property value="#request.searchText" />&pageNum=<s:property value="searchResult.page.currentPage-1" />&club.id=<s:property value="club.id"/>">上一页</a></span>&nbsp;
+    			<w:page url="searchMerchant?searchText=%{#request.searchText}&club.id=%{club.id}" useSingleProperty="false" pageNumberPropertyName="pageNum" value="searchResult.page" />
+				<%-- <span><a href="searchMerchant?searchText=<s:property value="#request.searchText" />&pageNum=<s:property value="searchResult.page.currentPage-1" />&club.id=<s:property value="club.id"/>">上一页</a></span>&nbsp;
 				<span><a href="searchMerchant?searchText=<s:property value="#request.searchText" />&pageNum=<s:property value="searchResult.page.currentPage+1" />&club.id=<s:property value="club.id"/>">下一页</a></span>
-				<span>共 <s:property value="searchResult.page.pageNumber" />页</span>
+				<span>共 <s:property value="searchResult.page.pageNumber" />页</span> --%>
 			</div>
 			</s:elseif>
 		</div>

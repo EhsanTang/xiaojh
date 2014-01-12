@@ -1,6 +1,7 @@
 package com.tjxjh.action;
 
 import java.io.File;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,18 +16,23 @@ import org.apache.struts2.convention.annotation.Result;
 
 import cn.cafebabe.autodao.pojo.Page;
 
+import com.tjxjh.auth.AuthEnum;
 import com.tjxjh.enumeration.ActivityStatus;
+import com.tjxjh.enumeration.UserStatus;
 import com.tjxjh.po.Activity;
 import com.tjxjh.po.Club;
 import com.tjxjh.po.Merchant;
 import com.tjxjh.po.Talking;
 import com.tjxjh.po.User;
+import com.tjxjh.pojo.ActivityList;
+import com.tjxjh.pojo.PageController;
 import com.tjxjh.service.ActivityService;
 import com.tjxjh.service.TalkingService;
 import com.tjxjh.util.Auth;
+import com.tjxjh.util.GetRequsetResponse;
 
-
-@ParentPackage("struts-default")
+//已经添加拦截器,已经需该分页
+@ParentPackage("myPackage")
 @Namespace("/")
 public class ActivityAction extends BaseAction{
 	protected final static String UPLOAD_IMAGE_PATH="/upload/images/";
@@ -41,6 +47,7 @@ public class ActivityAction extends BaseAction{
 	protected HttpServletRequest request=ServletActionContext.getRequest();
 	private Activity  activity=new Activity();
 	private Merchant merchant =new Merchant();
+	private String allowDelete ="no";
 	private Club club =new Club();
 	private List<Activity> acs=new ArrayList<Activity>();
 	@Resource
@@ -50,27 +57,28 @@ public class ActivityAction extends BaseAction{
 	private String message;//提示信息
 	 //活动排序条件
 	private String condition="datetime";
-	private Page page;
+	private Page page=new Page();
 	private Integer eachPageNumber=4;
-	private Integer currentPage=1;
-	private Integer totalPageNumber=0;
+	//private Integer currentPage=1;
+	//private Integer totalPageNumber=0;
 	User user=new User();
 	private String actionName;
+	private Integer flage=0;//flage=0表示查看所有所动，1表示查看尚未审核活动，2是查看已经审核的活动，3查看已经拒绝的活动
 	/**
 	 * 活动尚未关联到社团对应的虚拟用户
 	 * 社团、商家发布活动 action
 	 * 执行功能：上传图片，缩放，裁剪生成缩略图
 	 * 
-	 * 所有用户尚未从session中获取，直接关联到id为1的用户上
+	 * 
 	 * @return
 	 * @throws Exception
 	 */
 	@Action(value = "addActivity", results = {
 			@Result(name = SUCCESS, location = BaseAction.FOREPART + "success.jsp")})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.MERCHANT,AuthEnum.CLUB_MANAGER,AuthEnum.CLUB_PROPRIETER})
 	public String add(){
-		club=Auth.getClubFromSession();
+		club=Auth.getCluFromSession ();
 		merchant=Auth.getMerchantFromSession();
-		user=Auth.getUserFromSession();
 		boolean upimg=activityService.uploadImage(activity,uploadImage, uploadImageFileName, UPLOAD_IMAGE_PATH+uploadImageFileName);
 		activityService.uploadVideo(activity,uploadVideo, uploadVideoFileName, UPLOAD_IMAGE_PATH+uploadVideoFileName);
 		if(upimg){
@@ -91,23 +99,15 @@ public class ActivityAction extends BaseAction{
 			return ERROR;
 		}
 	}
-	//activityid 查找一个activity
-			@Action(value = "activity", results = {
-					@Result(name = SUCCESS, location = BaseAction.FOREPART + "activity.jsp")})
-			public String activity(){
-				activity=activityService.findById(activity.getId());
-				return SUCCESS;
-				
-			}
+	
 	/**
 	 * 校江湖管理人员发布的活动
 	 * @return
 	 */
 	@Action(value = "addActivityByadmin", results = {
 			@Result(name = SUCCESS, location = BaseAction.FOREPART + "success.jsp")})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.ADMIN})
 	public String addByAdmin(){
-		//校江湖管理人员判断
-		
 		boolean upimg=activityService.uploadImage(activity,uploadImage, uploadImageFileName, UPLOAD_IMAGE_PATH+uploadImageFileName);
 		activityService.uploadVideo(activity,uploadVideo, uploadVideoFileName, UPLOAD_IMAGE_PATH+uploadVideoFileName);
 		if(upimg){
@@ -119,44 +119,84 @@ public class ActivityAction extends BaseAction{
 			return ERROR;
 		}
 	}
+	@Action(value = "activity", results = {
+	@Result(name = SUCCESS, location = BaseAction.FOREPART + "activity.jsp")})
+	public String activity(){
+		activity=activityService.findById(activity.getId());
+		return SUCCESS;
+		
+	}
 	//根据用户所在社团，所关注的社团，关注的商家 查出发布的activity
 	@Action(value = "relativeActivity", results = {
-			@Result(name = SUCCESS, location = BaseAction.FOREPART + "myActivity.jsp")})
-	public String findMyActivity(){
+	@Result(name = SUCCESS, location = BaseAction.FOREPART + "myActivity.jsp")})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.USER})
+	public String relativeActivity(){
 		user=Auth.getUserFromSession();
-		page=activityService.getRelativeActivityPageByHql(user,eachPageNumber,currentPage,totalPageNumber);
+		ActivityList activityList=new ActivityList(); 
+		page=activityService.getRelativeActivityPageByHql(user,eachPageNumber,page.getCurrentPage(),page.getPageNumber());
+		activityList.setPage(page);
 		acs=activityService.findRelativeActivityByHql(page,user,condition);
+		activityList.setAcs(acs);
+		
+		getRequestMap().put("activityList",activityList);
+		
 		actionName="relativeActivity";
 		return SUCCESS;
 		
 	}
 	//用户根据社团id，商家id 查出社团发布的activity 
-	@Action(value = "oneActivity", results = {
-				@Result(name = SUCCESS, location = BaseAction.FOREPART + "myActivity.jsp")})
-		public String findOneActivity(){
-			//club.setId(1);
-			//merchant.setId(1);
-			page=activityService.getOneClubPageByHql(eachPageNumber,currentPage,totalPageNumber,club,merchant);
-			acs=activityService.findOneClubActivityByHql(page,club,merchant,condition);
-			actionName="oneActivity";
+	@Action(value = "activitys", results = {
+	@Result(name = SUCCESS, location = BaseAction.FOREPART + "myActivity.jsp")})
+		public String activitys(){
+			if(merchant.getId()==null&&club.getId()==null){
+				merchant=Auth.getMerchantFromSession();
+				club=Auth.getCluFromSession();
+				allowDelete="yes";
+			}else{
+				flage=2;
+			}
+			if(merchant!=null||club!=null){
+				ActivityList activityList=new ActivityList(); 
+				page=activityService.getOneClubPageByHql(eachPageNumber,page.getCurrentPage(),page.getPageNumber(),club,merchant,flage);
+				activityList.setPage(page);
+				acs=activityService.getOneClubActivityByHql(page,club,merchant,condition,flage);
+				activityList.setAcs(acs);
+				
+				getRequestMap().put("activityList",activityList);
+				if(allowDelete.equals("yes")){
+					merchant=null;club=null;
+				}
+			}
+			actionName="activitys";
 			return SUCCESS;
 			
 	}
-	//商家，管理人员根据社团id，查出社团发布的activity 需要添加拦截器，非管理人员不能查看
-	@Action(value = "adminFindOneActivity", results = {
-			@Result(name = SUCCESS, location = BaseAction.FOREPART + "myActivity.jsp")})
-		public String adminFindOneClubActivity(){
-			//club=Auth.getClubFromSession();
-			//merchant=Auth.getMerchantFromSession();
-			page=activityService.adminGetOneClubPageByHql(eachPageNumber,currentPage,totalPageNumber,club,merchant);
-			acs=activityService.adminFindOneClubActivityByHql(page,club,merchant,condition);
-			actionName="adminFindOneActivity";
+	//校江湖管理人员
+	@Action(value = "adminActivitys", results = {
+			@Result(name = SUCCESS, location = BaseAction.MANAGE + "allActivitys.jsp")})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.ADMIN})
+		public String adminActivitys()
+	  	{
+			if(Auth.getUserFromSession().getStatus()==UserStatus.ADMIN){
+				ActivityList activityList=new ActivityList();
+				page=activityService.
+						getOneClubPageByHql(eachPageNumber,page.getCurrentPage(),page.getPageNumber(),club,merchant,flage);
+				acs=activityService.
+						getOneClubActivityByHql(page,club,merchant,condition,flage);
+				activityList.setPage(page);
+				activityList.setAcs(acs);
+				
+				getRequestMap().put("activityList",activityList);
+			}
+			actionName="adminActivitys";
 			return SUCCESS;
 				
-	}
-	//管理员删除所在社团的Activity
+	  	}
+	//商家、社团管理人员删除所Activity
+	
 	@Action(value = "deleteActivity", results = {
-			@Result(name = SUCCESS,type = REDIRECT_ACTION, location ="adminFindOneActivity")})
+	@Result(name = SUCCESS,type = REDIRECT_ACTION, location ="activitys")})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.MERCHANT,AuthEnum.CLUB_MANAGER,AuthEnum.CLUB_PROPRIETER})
 		public String deleteClubNews(){
 			user=Auth.getUserFromSession();
 			merchant=Auth.getMerchantFromSession();
@@ -164,21 +204,36 @@ public class ActivityAction extends BaseAction{
 			activityService.delete(activity);
 			return SUCCESS;
 	}	
+		//校江湖管理员删除所在社团的Activity
+		@Action(value = "adminDeleteActivity", results = {
+				@Result(name = SUCCESS,type = CHAIN, location ="adminActivitys")})
+		@com.tjxjh.annotation.Auth(auths = {AuthEnum.ADMIN})
+			public String adminDeleteClubNews(){
+				user=Auth.getUserFromSession();
+				activity=activityService.findByHql(user,null, activity);
+				activityService.delete(activity);
+				return SUCCESS;
+		}	
+	
 	//管理员、商家 、社团 修改社团发布的Activity
 	@Action(value = "preModifyActivity", results = {
-			@Result(name = SUCCESS, location = BaseAction.FOREPART + "modifyActivity.jsp")})
+			@Result(name = SUCCESS, location = BaseAction.FOREPART + "modifyActivity.jsp"),
+			@Result(name = "admin", location = BaseAction.MANAGE + "modifyActivity.jsp")})
+	@com.tjxjh.annotation.Auth(auths = {AuthEnum.ADMIN,AuthEnum.MERCHANT,AuthEnum.CLUB_MANAGER,AuthEnum.CLUB_PROPRIETER})
 		public String preModifyActivity(){
 			user=Auth.getUserFromSession();
 			merchant=Auth.getMerchantFromSession();
 			activity=activityService.findByHql(user,merchant, activity);
-			if(1==1){//判断用户是否为校江湖管理人员
+			if(user.getStatus()==UserStatus.ADMIN){//判断用户是否为校江湖管理人员
 				actionName="admin";
+				return "admin";
 			}
 			return SUCCESS;
 		}	
 		//商家 、社团 修改社团发布的Activity
 		@Action(value = "modifyActivity", results = {
-				@Result(name = SUCCESS, location = BaseAction.FOREPART + "myActivity.jsp")})
+				@Result(name = SUCCESS, location = REDIRECT_ACTION + "activitys")})
+		@com.tjxjh.annotation.Auth(auths = {AuthEnum.ADMIN,AuthEnum.MERCHANT,AuthEnum.CLUB_MANAGER,AuthEnum.CLUB_PROPRIETER})
 			public String modifyActivity(){
 				user=Auth.getUserFromSession();
 				merchant=Auth.getMerchantFromSession();
@@ -188,11 +243,11 @@ public class ActivityAction extends BaseAction{
 				if(oldactivity==null||!oldactivity.getStatus().equals(ActivityStatus.APPLY)){
 					return ERROR;//在活动审核通过或拒绝之后，商家不可以再改动
 				}
-					boolean upimg=activityService.uploadImage(activity,uploadImage, uploadImageFileName, UPLOAD_IMAGE_PATH+uploadImageFileName);
-					activityService.uploadVideo(activity,uploadVideo, uploadVideoFileName, UPLOAD_IMAGE_PATH+uploadVideoFileName);
-					if(!upimg){
-						return ERROR;
-					}
+				boolean upimg=activityService.uploadImage(activity,uploadImage, uploadImageFileName, UPLOAD_IMAGE_PATH+uploadImageFileName);
+				activityService.uploadVideo(activity,uploadVideo, uploadVideoFileName, UPLOAD_IMAGE_PATH+uploadVideoFileName);
+				if(!upimg){
+					return ERROR;
+				}
 					activity.setTalking(oldactivity.getTalking());
 					activity.setClub(oldactivity.getClub());
 					activity.setStatus(oldactivity.getStatus());
@@ -200,15 +255,15 @@ public class ActivityAction extends BaseAction{
 					activity.setDatetime(oldactivity.getDatetime());
 					activity.setHeat(oldactivity.getHeat());
 					activity.setParticipantCount(oldactivity.getParticipantCount());
-				activityService.update(activity);
+					activityService.update(activity);
 				return SUCCESS;
 			}	
-		//校江湖管理修改社团发布的Activity
+		//校江湖管理人员修改社团发布的Activity
 		@Action(value = "adminModifyActivity", results = {
-				@Result(name = SUCCESS, location = BaseAction.FOREPART + "myActivity.jsp")})
+				@Result(name = SUCCESS, type = REDIRECT_ACTION,location = "adminActivitys")})
+		@com.tjxjh.annotation.Auth(auths = {AuthEnum.ADMIN})
 			public String adminModifyActivity(){
 				user=Auth.getUserFromSession();
-				//merchant=Auth.getMerchantFromSession();
 				Activity oldactivity=new Activity();
 				oldactivity.setId(activity.getId());
 				oldactivity=activityService.findByHql(user,merchant, oldactivity);
@@ -233,9 +288,45 @@ public class ActivityAction extends BaseAction{
 					Talking talking=activityService.initTalking(activity, oldactivity);
 					activityService.addOrUpdate(talking, activity);
 				}
-				//activityService.update(activity);
+				activityService.update(activity);
 				return SUCCESS;
 			}	
+		@Action(value = "canyu", results = {
+		})
+		public String canyu()
+		{
+			PrintWriter out =GetRequsetResponse.getAjaxPrintWriter();
+			if(activityService.getCanyuCookie(activity)==-1){
+				out.print(-1);
+				out.flush();
+				out.close();
+				return null;
+			}
+			activity=activityService.findById(activity.getId());
+			int temp=activity.getParticipantCount()+1;
+			activity.setParticipantCount(temp);
+			activityService.update(activity,"id");
+			activityService.addCanyuCookie(activity);
+			out.print(temp);
+			out.flush();
+			out.close();
+			return null;
+		}
+		@Action(value = "deleteCanyu", results = {
+		})
+		public String deleteCanyu()
+		{
+			PrintWriter out =GetRequsetResponse.getAjaxPrintWriter();
+			activity=activityService.findById(activity.getId());
+			int temp=activity.getParticipantCount()-1;
+			activity.setParticipantCount(temp);
+			activityService.update(activity,"id");
+			activityService.deleteCnayuCookie(activity);
+			out.print(temp);
+			out.flush();
+			out.close();
+			return null;
+		}
 	public File getUploadImage() {
 		return uploadImage;
 	}
@@ -321,18 +412,7 @@ public class ActivityAction extends BaseAction{
 	public void setEachPageNumber(Integer eachPageNumber) {
 		this.eachPageNumber = eachPageNumber;
 	}
-	public Integer getCurrentPage() {
-		return currentPage;
-	}
-	public void setCurrentPage(Integer currentPage) {
-		this.currentPage = currentPage;
-	}
-	public Integer getTotalPageNumber() {
-		return totalPageNumber;
-	}
-	public void setTotalPageNumber(Integer totalPageNumber) {
-		this.totalPageNumber = totalPageNumber;
-	}
+	
 	public User getUser() {
 		return user;
 	}
@@ -350,6 +430,20 @@ public class ActivityAction extends BaseAction{
 	}
 	public void setCondition(String condition) {
 		this.condition = condition;
+	}
+	public Integer getFlage() {
+		return flage;
+	}
+	public void setFlage(Integer flage) {
+		this.flage = flage;
+	}
+
+	public String getAllowDelete() {
+		return allowDelete;
+	}
+
+	public void setAllowDelete(String allowDelete) {
+		this.allowDelete = allowDelete;
 	}
 	
 

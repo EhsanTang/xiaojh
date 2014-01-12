@@ -7,6 +7,7 @@
 %>
 <%@taglib prefix="s" uri="/struts-tags"%>
 <%@taglib prefix="ads" uri="fineTu/ads"%>
+<%@ taglib uri="/webSupportTag" prefix="w" %>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html>
 <head>
@@ -28,15 +29,15 @@
 		<div class="main fl cf mt75">
 			<div class="w fl">
 				<a href="<%=path%>/addOnlineActivityJsp"
-					class="single_bt1 w100 mt5 ml5 fl shadow_l_5">发表线上活动</a> <a
-					href="relativeActivity" class="single_bt2 w100 fl mt10 shadow_l_5">查看线下活动</a><br />
-				<br /> <a href="#" class="fr mr20">时间排序</a> <a href="#"
-					class="fr mr10">热度排序</a>
+					class="single_bt1 w100 mt5 ml5 fl shadow_l_3">发表线上活动</a> <a
+					href="relativeActivity" class="single_bt2 w100 fl mt10 shadow_l_3">查看线下活动</a><br />
+				<br /> <!-- <a href="#" class="fr mr20">时间排序</a> <a href="#"
+					class="fr mr10">热度排序</a> -->
 			</div>
 
 			<s:property value="message" />
 
-			<s:iterator value="oacs" id="oac">
+			<s:iterator value="#request.onlineActivityList.oacs" id="oac">
 				<div
 					class="myActivity_box w700 mt15 ml5 p10 cf fl shadow_l_10 bg_fff">
 					<!--  活动 封面： -->
@@ -58,7 +59,10 @@
 							href="<%=path %>/preShareTalking?talking.id=${talking.id}">分享</a>
 							<span id="zan${talking.id}"> <a href="javascript:void(0);"
 								onclick="zanTalking(${talking.id});">赞(${talking.shareDetails.praiseCount})</a>
-						</span><a href="#">我要参与</a></li>
+						<span id="onlinecanyu${id}"> 
+						<a href="javascript:void(0);" onclick="onlinecanyu(${id});">
+							我要参与(${participantCount})</a>
+						</span>
 						<s:if test="actionName.equals('userOnlineActivity')">
 							<a href="preModifyOnlineActivity?onlineactivity.id=${id}">删除</a>
 							<a href="deleteOnlineActivity?onlineactivity.id=${id}">修改</a>
@@ -68,15 +72,8 @@
 			</s:iterator>
 
 			<ul class="w300 fl mt20">
-				<li class="w60 fr">共${page.pageNumber}页</li>
-				<li class="w60 fr">当前第${page.currentPage}页</li>
-				<li class="w60 fl"><a
-					href="<%=path%>/${actionName}?condition=${condition}&currentPage=${page.currentPage-1}&totalPageNumber=${page.pageNumber}&club.id=${club.id}&merchant.id=${merchant.id}"
-					target="_self">上一页</a>
-				</li>
-				<li class="w60 fl"><a
-					href="<%=path%>/${actionName}?condition=${condition}&currentPage=${page.currentPage+1}&totalPageNumber=${page.pageNumber}&club.id=${club.id}&merchant.id=${merchant.id}"
-					target="_self">下一页</a></li>
+				<w:page url="%{actionName}?condition=%{condition}&user.id=%{user.id}&club.id=%{club.id}&merchant.id=%{merchant.id}"  value="#request.onlineActivityList.page" />
+			
 			</ul>
 		</div>
 		<ul class="left_bar fl cf mt75 pt50">

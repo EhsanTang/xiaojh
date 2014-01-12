@@ -1,5 +1,7 @@
 <%@ page language="java" import="java.util.*" pageEncoding="utf-8"%>
 <%@ taglib uri="/struts-tags" prefix="s" %>
+<%@ taglib uri="/webSupportTag" prefix="w" %>
+<%@ taglib uri="fineTu/page" prefix="f" %>
 <%
 String path = request.getContextPath();
 String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.getServerPort()+path+"/";
@@ -10,7 +12,7 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
   <head>
     <base href="<%=basePath%>">
     
-    <title>My JSP 'clubFocus.jsp' starting page</title>
+    <title>My JSP 'merchantFocus.jsp' starting page</title>
     
 	<meta http-equiv="pragma" content="no-cache">
 	<meta http-equiv="cache-control" content="no-cache">
@@ -85,10 +87,8 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
 			<div class="main">
 				<div class="left">
 					<div class="list">
-						<s:property value="#request.focusList" />
-						<s:property value="type" />
 						<s:if test="type==1">
-						<s:iterator value="#request.focusList">
+						<s:iterator value="#request.focusList.clubList">
 							<div class="listItem">
 							<div class="portrait_big">
 									<s:if test="logoPath==''">
@@ -120,7 +120,7 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
 	    				</s:iterator>
 						</s:if>
 						<s:elseif test="type==2">
-						<s:iterator value="#request.focusList">
+						<s:iterator value="#request.focusList.merchantList">
 							<div class="listItem">
 							<div class="portrait_big">
 								</div>
@@ -148,6 +148,13 @@ String basePath = request.getScheme()+"://"+request.getServerName()+":"+request.
 	    					</div>
 	    				</s:iterator>
 						</s:elseif>
+						<div>
+		    				<%-- <span><a href="merchantFocus?type=<s:property value="type" />&pageNum=<s:property value="#request.focusList.page.currentPage-1" />">上一页</a></span>&nbsp;
+							<span><a href="merchantFocus?type=<s:property value="type" />&pageNum=<s:property value="#request.focusList.page.currentPage+1" />">下一页</a></span>
+							<span>共 <s:property value="#request.focusList.page.pageNumber" />页</span> --%>
+							<%-- <f:pageCtrl pageCtrl="${pageCtrl}" submitAction="merchantFocus?type=${type}" paramName="pageNum"/> --%>
+							<w:page url="merchantFocus?type=%{type}" useSingleProperty="false" pageNumberPropertyName="pageNum" value="#request.focusList.page" />
+	    				</div>
 					</div>
 				</div>
 				<div class="right">

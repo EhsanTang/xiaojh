@@ -1,10 +1,14 @@
 package com.tjxjh.action;
 
 import java.io.File;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import javax.annotation.Resource;
 
+import org.apache.struts2.ServletActionContext;
 import org.apache.struts2.convention.annotation.Action;
 import org.apache.struts2.convention.annotation.Actions;
 import org.apache.struts2.convention.annotation.Namespace;
@@ -13,7 +17,9 @@ import org.apache.struts2.convention.annotation.Result;
 
 import cn.cafebabe.autodao.pojo.Page;
 
+import com.tjxjh.annotation.AddClubPopularity;
 import com.tjxjh.annotation.Auth;
+import com.tjxjh.auth.AuthEnum;
 import com.tjxjh.enumeration.ClubMemberRole;
 import com.tjxjh.enumeration.ClubMemberSource;
 import com.tjxjh.interceptor.AuthInterceptor.ClubManagerAuth;
@@ -25,17 +31,24 @@ import com.tjxjh.po.ClubMember;
 import com.tjxjh.po.ClubPost;
 import com.tjxjh.po.Merchant;
 import com.tjxjh.po.User;
+import com.tjxjh.pojo.ClubList;
 import com.tjxjh.pojo.ClubPostList;
+import com.tjxjh.pojo.MerchantList;
 import com.tjxjh.service.ActivityService;
 import com.tjxjh.service.ClubPostService;
 import com.tjxjh.service.ClubService;
 import com.tjxjh.service.SearchService;
+import com.tjxjh.service.UserService;
 import com.tjxjh.util.CodeUtil;
 
-@ParentPackage("authController")
+@ParentPackage("myPackage")
 @Namespace("/")
 public class ClubAction extends BaseAction
 {
+	public final static String CLUB_VISITOR = "clubVisitor";
+	static final String UPDATE_CLUB = "updateClub";
+	static final String UPDATE_CLUB_INPUT = "updateClubInput";
+	static private int EACH_PAGE_NUM = 10;
 	static final String CHANGE_PROPRIETER_INPUT = "changeProprieterInput";
 	static final String CHANGE_PROPRIETER = "changeProprieter";
 	static final String UPDATE_MEMBER_TO_NORMAL = "updateMemberToNormal";
@@ -70,58 +83,88 @@ public class ClubAction extends BaseAction
 	private String text = null;
 	private User user = null;
 	private int type;
+	private int pageNum;
 	private List<Activity> acs = null;
-	//排序方式
+	
+	@Actions({@Action(value = "allClub", results = {@Result(name = SUCCESS, location = MANAGE
+			+ "allClub.jsp")})})
+	@Auth(auths = {AuthEnum.ADMIN, AuthEnum.MERCHANT})
+	public String allClub()
+	{
+		Page page = new Page(pageNum * Page.getDefaultPageNumber() + 1);
+		page.setCurrentPage(pageNum);
+		Page itemPage = clubService.clubNum(page);
+		ClubList clubList = new ClubList();
+		clubList.setClubList(clubService.allClub(itemPage));
+		for(Club c : clubList.getClubList())
+		{
+			c.getProprieter().getName();
+			c.getSchool().getName();
+		}
+		clubList.setPage(itemPage);
+		getRequestMap().put("clubList", clubList);
+		return SUCCESS;
+	}
+	
+	// 排序方式
 	@Actions({@Action(value = APPLY_CLUB_INPUT, results = {@Result(name = SUCCESS, location = FOREPART
 			+ APPLY_CLUB + JSP)})})
-	@Auth
+	@Auth(auths = {AuthEnum.USER})
 	public String page()
 	{
 		return SUCCESS;
 	}
 	
-	@Action(value = APPLY_CLUB, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = CHECK_CLUB, params = {
-			"club.id", "${club.id}"})})
-	@Auth
+	@Action(value = APPLY_CLUB, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = MY_CLUBS)})
+	@Auth(auths = {AuthEnum.USER})
 	public String applyClub()
+	{
+		fillLogoPathToClub();
+		clubService.applyClub(club, super.currentUser(), logo);
+		return SUCCESS;
+	}
+	
+	private void fillLogoPathToClub()
 	{
 		club.setLogoPath(new StringBuilder("upload/clubLogo/school_")
 				.append(club.getSchool().getId()).append("_")
 				.append(CodeUtil.md5(club.getName()))
 				.append(logoFileName.substring(logoFileName.indexOf('.')))
 				.toString());
-		clubService.applyClub(club, super.currentUser(), logo);
-		return SUCCESS;
 	}
 	
-	@Action(value = CHECK_CLUB, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = MY_CLUBS)})
-	@Auth
-	public String checkClub()
-	{
-		clubService.checkClub(club, true);
-		return SUCCESS;
-	}
-	
+	// @Action(value = CHECK_CLUB, results = {@Result(name = SUCCESS, type =
+	// REDIRECT_ACTION, location = MY_CLUBS)})
+	// @Auth
+	// public String checkClub()
+	// {
+	// clubService.checkClub(club, true);
+	// return SUCCESS;
+	// }
 	@Action(value = MY_CLUBS, results = {@Result(name = SUCCESS, location = FOREPART
 			+ MY_CLUBS + JSP)})
-	@Auth
+	@Auth(auths = {AuthEnum.AUTO_CLUB_MEMBER})
 	public String myClubs()
 	{
 		super.getRequestMap().put("clubInviteCount",
 				clubService.clubInvitedCount(super.currentUser()));
 		if(page == null)
 		{
-			page = clubService.userClubsPage(currentUser());
+			page = clubService.userClubsPage(currentUser(), club);
 		}
 		super.getRequestMap().put(MY_CLUBS,
-				clubService.userClubs(currentUser(), page));
+				clubService.userClubs(currentUser(), club, page));
+		super.getRequestMap().put("myNoCheckClubs",
+				clubService.userNoCheckClubs(currentUser(), null));
 		return SUCCESS;
 	}
 	
 	@Action(value = CLUB_MAIN, results = {
 			@Result(name = SUCCESS, location = FOREPART + CLUB_MAIN + JSP),
 			@Result(name = INPUT, type = REDIRECT_ACTION, location = UserAction.MAIN)})
-	@Auth(type = UserWithClubMemberAuth.class)
+	@Auth(auths = {AuthEnum.AUTO_CLUB_MEMBER, AuthEnum.MERCHANT,
+			AuthEnum.NO_NEED})
+	@AddClubPopularity
 	public String clubMain()
 	{
 		if(isClubEmpty())
@@ -130,23 +173,41 @@ public class ClubAction extends BaseAction
 		}
 		// super.saveClubMember(currentClubMember = currentClubMember());
 		club = clubService.clubById(club);
+		// 算人气
+		String remoteIp = ServletActionContext.getRequest().getRemoteAddr();
+		@SuppressWarnings("unchecked")
+		Map<Integer, Set<String>> visitorMap = (Map<Integer, Set<String>>) getApplicationMap()
+				.get(CLUB_VISITOR);
+		Set<String> thisClubVisitorSet = visitorMap.get(club.getId());
+		if(thisClubVisitorSet == null)
+		{
+			thisClubVisitorSet = new HashSet<String>();
+			visitorMap.put(club.getId(), thisClubVisitorSet);
+		}
+		if(!thisClubVisitorSet.contains(remoteIp))
+		{
+			club.setLiveness(club.getLiveness() + 1);
+			thisClubVisitorSet.add(remoteIp);
+		}
 		/********************** fineTu ***********************/
 		club.getClubsForTargetClubId();
-		List<Club> focusClubList = clubService.getFocusList(Club.class, club);
+		Page page = new Page(1 * EACH_PAGE_NUM + 1);
+		page.setEachPageNumber(EACH_PAGE_NUM);
+		page.setCurrentPage(1);
+		List<Club> focusClubList = clubService.getFocusList(Club.class, club,
+				page);
 		if(focusClubList.size() > 9)
 		{
 			focusClubList = focusClubList.subList(0, 9);
 		}
 		getRequestMap().put("focusClubList", focusClubList);
 		List<Club> focusMerchantList = clubService.getFocusList(Merchant.class,
-				club);
+				club, page);
 		if(focusMerchantList.size() > 9)
 		{
 			focusMerchantList = focusMerchantList.subList(0, 9);
 		}
 		getRequestMap().put("focusMerchantList", focusMerchantList);
-		Page page = new Page(1 * 7 + 1);
-		page.setCurrentPage(1);
 		ClubPostList clubPostList = new ClubPostList();
 		List<ClubPost> list = clubPostService.clubPostList(club.getId(), page);
 		for(ClubPost p : list)
@@ -158,8 +219,9 @@ public class ClubAction extends BaseAction
 		}
 		clubPostList.setClubPostList(list);
 		getRequestMap().put("clubPostList", clubPostList);
-		page = activityService.adminGetOneClubPageByHql(6, 1, 0, club, null);
-		acs = activityService.adminFindOneClubActivityByHql(page, club, null,"datetime");
+		page = activityService.getOneClubPageByHql(6, 1, 0, club, null, 2);
+		acs = activityService.getOneClubActivityByHql(page, club, null,
+				"datetime", 2);
 		getRequestMap().put("acs", acs);
 		/****************************************************/
 		super.getRequestMap().put("club", club);
@@ -179,7 +241,7 @@ public class ClubAction extends BaseAction
 	
 	@Action(value = CLUB_REQUEST, results = {@Result(name = SUCCESS, location = FOREPART
 			+ CLUB_REQUEST + JSP)})
-	@Auth
+	@Auth(auths = {AuthEnum.AUTO_CLUB_MEMBER})
 	public String myInvited()
 	{
 		super.getRequestMap().put(CLUB_REQUEST, clubService.clubRequest(club));
@@ -188,7 +250,8 @@ public class ClubAction extends BaseAction
 	
 	@Action(value = CLUB_MEMBERS, results = {@Result(name = SUCCESS, location = FOREPART
 			+ CLUB_MEMBERS + JSP)})
-	@Auth(type = UserWithClubMemberAuth.class)
+	@Auth(auths = {AuthEnum.AUTO_CLUB_MEMBER, AuthEnum.MERCHANT})
+	@AddClubPopularity
 	public String clubMembers()
 	{
 		// super.saveClubMember(currentClubMember());
@@ -204,6 +267,7 @@ public class ClubAction extends BaseAction
 	@Action(value = SEARCH_USER_TO_MANAGE, results = {@Result(name = SUCCESS, location = FOREPART
 			+ SEARCH_USER_TO_MANAGE + JSP)})
 	@Auth(type = UserWithClubMemberAuth.class)
+	@AddClubPopularity
 	public String searchUserToManage()
 	{
 		// super.saveClubMember(currentClubMember());
@@ -219,10 +283,14 @@ public class ClubAction extends BaseAction
 	}
 	
 	@Action(value = CLUB_ADD_USER, results = {
-			@Result(name = SUCCESS, type = REDIRECT_ACTION, location = SEARCH_USER_TO_MANAGE, params = {
-					"text", "${text}", "club.id", "${club.id}"}),
-			@Result(name = INPUT, type = REDIRECT_ACTION, location = SEARCH_USER_TO_MANAGE)})
+			@Result(name = SUCCESS, type = REDIRECT_ACTION, location = "searchUser", params = {
+					"searchText", "${text}", "club.id", "${club.id}",
+					"pageNum", "${pageNum}"}),
+			@Result(name = INPUT, type = REDIRECT_ACTION, location = "searchUser", params = {
+					"searchText", "${text}", "club.id", "${club.id}",
+					"pageNum", "${pageNum}"})})
 	@Auth(type = ClubManagerAuth.class)
+	@AddClubPopularity
 	public String clubAddUser()
 	{
 		if(user == null || user.getId() == null)
@@ -235,7 +303,7 @@ public class ClubAction extends BaseAction
 	
 	@Action(value = USER_ADD_CLUB, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = CLUB_MAIN, params = {
 			"club.id", "${club.id}"})})
-	@Auth
+	@Auth(auths = {AuthEnum.USER})
 	public String userAddClub()
 	{
 		if(isClubEmpty())
@@ -249,7 +317,8 @@ public class ClubAction extends BaseAction
 	
 	@Action(value = USER_ACCEPT_INVITED, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = CLUB_MAIN, params = {
 			"club.id", "${club.id}"})})
-	@Auth
+	@Auth(auths = {AuthEnum.AUTO_CLUB_MEMBER})
+	@AddClubPopularity
 	public String userAcceptInvited()
 	{
 		clubService.acceptInvited(super.currentUser(), club);
@@ -257,7 +326,7 @@ public class ClubAction extends BaseAction
 	}
 	
 	@Action(value = USER_REFUSE_INVITED, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = UserAction.MY_INVITED)})
-	@Auth
+	@Auth(auths = {AuthEnum.AUTO_CLUB_MEMBER})
 	public String userRefuseInvited()
 	{
 		clubService.refuseInvited(super.currentUser(), club);
@@ -267,6 +336,7 @@ public class ClubAction extends BaseAction
 	@Action(value = CLUB_ACCEPT_INVITED, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = CLUB_MEMBERS, params = {
 			"club.id", "${club.id}"})})
 	@Auth(type = ClubManagerAuth.class)
+	@AddClubPopularity
 	public String clubAcceptInvited()
 	{
 		clubService.acceptInvited(user, club);
@@ -285,6 +355,7 @@ public class ClubAction extends BaseAction
 	@Action(value = FIRE_CLUB_MEMBER, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = CLUB_MEMBERS, params = {
 			"club.id", "${club.id}"})})
 	@Auth(type = ClubManagerAuth.class)
+	@AddClubPopularity
 	public String fireClubMember()
 	{
 		clubService.deleteClubMember(user, club, currentClubMember());
@@ -293,23 +364,35 @@ public class ClubAction extends BaseAction
 	
 	@Action(value = "clubFocus", results = {@Result(name = SUCCESS, location = BaseAction.FOREPART
 			+ "clubFocus.jsp")})
+	@Auth(type = UserWithClubMemberAuth.class)
+	@AddClubPopularity
 	public String myFocus()
 	{
 		// List<User> focusList = sessionUser.getUsersForTargetUserId();
 		ClubMember clubMember = (ClubMember) getSessionMap().get("clubMember");
 		Club club = new Club();
 		club.setId(clubMember.getId().getClubId());
+		Page page = new Page(EACH_PAGE_NUM, pageNum * EACH_PAGE_NUM + 1);
+		page.setCurrentPage(pageNum);
 		switch(type)
 		{
 			case (1):
-				List<Club> clubList = clubService
-						.getFocusList(Club.class, club);
-				getRequestMap().put("focusList", clubList);
+				List<Club> clubList = clubService.getFocusList(Club.class,
+						club, page);
+				ClubList clubListPojo = new ClubList();
+				clubListPojo.setClubList(clubList);
+				clubListPojo.setPage(clubService.getFocusNum(Club.class, club,
+						page));
+				getRequestMap().put("focusList", clubListPojo);
 				break;
 			case (2):
 				List<Merchant> merchantList = clubService.getFocusList(
-						Merchant.class, club);
-				getRequestMap().put("focusList", merchantList);
+						Merchant.class, club, page);
+				MerchantList merchantListPojo = new MerchantList();
+				merchantListPojo.setMerchantList(merchantList);
+				merchantListPojo.setPage(clubService.getFocusNum(
+						Merchant.class, club, page));
+				getRequestMap().put("focusList", merchantListPojo);
 				break;
 		}
 		return SUCCESS;
@@ -318,6 +401,7 @@ public class ClubAction extends BaseAction
 	@Action(value = UPDATE_MEMBER_TO_MANAGER, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = CLUB_MEMBERS, params = {
 			"club.id", "${club.id}"})})
 	@Auth(type = ClubProprieterAuth.class)
+	@AddClubPopularity
 	public String updateMemberToManager()
 	{
 		clubService.changeMemberRole(user, currentClubMember(),
@@ -328,6 +412,7 @@ public class ClubAction extends BaseAction
 	@Action(value = UPDATE_MEMBER_TO_NORMAL, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = CLUB_MEMBERS, params = {
 			"club.id", "${club.id}"})})
 	@Auth(type = ClubProprieterAuth.class)
+	@AddClubPopularity
 	public String updateMemberToNormal()
 	{
 		clubService.changeMemberRole(user, currentClubMember(),
@@ -338,6 +423,7 @@ public class ClubAction extends BaseAction
 	@Action(value = CHANGE_PROPRIETER_INPUT, results = {@Result(name = SUCCESS, location = FOREPART
 			+ CHANGE_PROPRIETER + JSP)})
 	@Auth(type = ClubProprieterAuth.class)
+	@AddClubPopularity
 	public String changeProprieterInput()
 	{
 		if(page == null)
@@ -355,9 +441,34 @@ public class ClubAction extends BaseAction
 	@Action(value = CHANGE_PROPRIETER, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = CLUB_MEMBERS, params = {
 			"club.id", "${club.id}"})})
 	@Auth(type = ClubProprieterAuth.class)
+	@AddClubPopularity
 	public String changeProprieter()
 	{
 		clubService.changeProprieter(user, currentClubMember());
+		return SUCCESS;
+	}
+	
+	@Action(value = UPDATE_CLUB_INPUT, results = {@Result(name = SUCCESS, location = FOREPART
+			+ UPDATE_CLUB + JSP)})
+	@Auth(auths = {AuthEnum.CLUB_PROPRIETER})
+	@AddClubPopularity
+	public String updateClubInput()
+	{
+		return SUCCESS;
+	}
+	
+	@Action(value = UPDATE_CLUB, results = {@Result(name = SUCCESS, type = REDIRECT_ACTION, location = CLUB_MAIN, params = {
+			"club.id", "${club.id}"})})
+	@AddClubPopularity
+	public String updateClub()
+	{
+		if(logo != null)
+		{
+			club = currentClubMember().getClub();
+			UserService.deleteOldPortraitPath(club.getLogoPath());
+			fillLogoPathToClub();
+		}
+		clubService.updateClub(club, logo);
 		return SUCCESS;
 	}
 	
@@ -461,4 +572,13 @@ public class ClubAction extends BaseAction
 		this.activityService = activityService;
 	}
 	
+	public int getPageNum()
+	{
+		return pageNum;
+	}
+	
+	public void setPageNum(int pageNum)
+	{
+		this.pageNum = pageNum;
+	}
 }

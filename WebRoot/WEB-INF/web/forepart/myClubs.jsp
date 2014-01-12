@@ -10,7 +10,7 @@
 
 <link rel="stylesheet" type="text/css" href="css/base-min.css" />
 <link rel="stylesheet" type="text/css" href="css/common.css" />
-<link rel="stylesheet" type="text/css" href="css/page-user.css" />
+<link rel="stylesheet" type="text/css" href="css/page-club.css" />
 
 </head>
 
@@ -20,8 +20,8 @@
 		<jsp:include page="head.jsp" />
 
 		<div class="left_bar mt75">
-			<div class="my_info w240 h90 p5 m5 shadow_l_10 bg_box">
-				<img src="images/head/head1.jpg"
+			<div class="my_info w240 h90 p5 m5 shadow_l_3 bg_box">
+				<img src="<s:property value="#session.user.portraitPath"/>"
 					class="fl mt5 ml10 circle_80 shadow_l_5" />
 				<ul class="fl w135 p5 pl10 text_r">
 					<li class="w135 text_l f14"><a href="updateUserInput"><s:property
@@ -31,19 +31,30 @@
 					<li><s:property
 							value="#application.schools[#session.user.school.id].name" />
 					</li>
-					<li>凤凰社</li>
 				</ul>
 			</div>
-			<div class="w240 h300 p5 m5 shadow_l_10 bg_box cf">
+			<div class="w240 h300 p5 m5 shadow_l_3 bg_box cf">
 				<div class="mt30 ml5">
-					按热度排序：<a href="school?school.id=${school.id}">查看</a>
+					按热度排序：<a href="myClubs">查看</a>
 				</div>
 				<div class="club_category cf ml5">
 					<span>按类型查看：</span><br />
+					<s:if test="club.type != null && !club.type.equals('') ">
+						<a class="shadow_l_5" href="myClubs">全部</a>
+					</s:if>
+					<s:else>
+						<span>全部</span>
+					</s:else>
 					<s:iterator value="@com.tjxjh.enumeration.ClubType@values()"
 						id="ac">
-						<a class="shadow_l_5"
-							href="school?school.id=${school.id}&clubType=<s:property value="name()"/>">${name}</a>
+						<s:if test="club == null || name() != club.type.name()">
+							<a class="shadow_l_5"
+								href="myClubs?club.type=<s:property value="name()"/>">${name}</a>
+						</s:if>
+						<s:else>
+							<span>${name}</span>
+						</s:else>
+						<%-- <s:a class="shadow_l_5" href="myClubs?club.type=%{name() }">${name}</s:a> --%>
 					</s:iterator>
 				</div>
 			</div>
@@ -52,7 +63,7 @@
 		<div class="main mt75">
 			<div class="cf">
 				<a href="applyClubInput"
-					class="single_bt1 w100 mt5 ml5 fl shadow_l_5">申请社团</a>
+					class="single_bt1 w100 mt5 ml5 mb5 fl shadow_l_3">申请社团</a>
 				<s:if
 					test="#request.clubInviteCount != null && #request.clubInviteCount != 0">
 					<a href="myInvited" class=""> 我的邀请(<s:property
@@ -60,34 +71,62 @@
 				</s:if>
 			</div>
 			<div class="bg_fff shadow_l_5 ml5 mr10 mt30">
-				<table class="w">
-					<thead class="clubList_thead">
-						<tr>
-							<th>Logo</th>
-							<th>社团名字</th>
-							<th>身份</th>
-							<th>操作</th>
-						</tr>
-					</thead>
-					<tbody class="clubList_tbody">
-						<s:iterator value="#request.myClubs">
+				<s:if test="#request.myClubs != null && #request.myClubs.size != 0">
+					<table class="w">
+						<thead class="clubList_thead">
 							<tr>
-								<td class="tl"><img src="images/head/head1.jpg" class="" />
-								</td>
-								<td><s:property value="club.name" />
-								</td>
-								<td><s:property value="role.name" /> <s:if
-										test="status.name() == 'NO_CHECK'">(<s:property
-											value="status.name" />)</s:if>
-								</td>
-								<td><s:a href="clubMain?club.id=%{club.id}">进入社团</s:a>
-								</td>
+								<th>Logo</th>
+								<th>社团名字</th>
+								<th>身份</th>
+								<th>操作</th>
 							</tr>
-						</s:iterator>
-					</tbody>
-				</table>
+						</thead>
+						<tbody class="clubList_tbody">
+							<s:iterator value="#request.myClubs">
+								<tr>
+									<td class="tl"><img src="${club.logoPath}" class="" />
+									</td>
+									<td><s:property value="club.name" />
+									</td>
+									<td><s:property value="role.name" /> <s:if
+											test="status.name() == 'NO_CHECK'">(<s:property
+												value="status.name" />)</s:if>
+									</td>
+									<td><s:a href="clubMain?club.id=%{club.id}">进入社团</s:a>
+									</td>
+								</tr>
+							</s:iterator>
+						</tbody>
+					</table>
+				</s:if>
+				<s:else>
+					<span>暂无此类社团</span>
+				</s:else>
 			</div>
 			<wst:page url="myClubs" />
+			<s:if test="#request.myNoCheckClubs.size != 0">
+				<div>
+					<label>未审核社团(可以做我的社团和未审核社团的切换按钮和效果)</label>
+					<table class="w">
+						<thead class="clubList_thead">
+							<tr>
+								<th>Logo</th>
+								<th>社团名字</th>
+							</tr>
+						</thead>
+						<tbody class="clubList_tbody">
+							<s:iterator value="#request.myNoCheckClubs">
+								<tr>
+									<td class="tl"><img src="${logoPath}" class="" />
+									</td>
+									<td><s:property value="name" />
+									</td>
+								</tr>
+							</s:iterator>
+						</tbody>
+					</table>
+				</div>
+			</s:if>
 		</div>
 	</div>
 </body>

@@ -1,5 +1,6 @@
 <%@ page language="java" import="java.util.*" pageEncoding="utf-8"%>
 <%@ taglib uri="/struts-tags" prefix="s"%>
+<%@ taglib uri="/webSupportTag" prefix="w" %>
 <%
 	String path = request.getContextPath();
 	String basePath = request.getScheme() + "://"
@@ -49,41 +50,54 @@
 				</div>
 				<div class="club_category cf">
 					<span>按类型查看：</span><br />
+					<s:if test="clubType != null && clubType != ''">
+						<a class="shadow_l_5" href="school?school.id=${school.id}">全部</a>
+					</s:if>
+					<s:else>
+						<span>全部</span>
+					</s:else>
 					<s:iterator value="@com.tjxjh.enumeration.ClubType@values()"
 						id="ac">
-						<a class="shadow_l_5"
-							href="school?school.id=${school.id}&clubType=<s:property value="name()"/>">${name}</a>
+						<s:if test="!name().equals(clubType)">
+							<a class="shadow_l_5"
+								href="school?school.id=${school.id}&clubType=<s:property value="name()"/>">${name}</a>
+						</s:if>
+						<s:else>
+							<span>${name}</span>
+						</s:else>
 					</s:iterator>
 				</div>
 			</div>
 		</div>
 		<div class="main mt75">
 			<div class="shadow_l_10 ml10 mr10">
-				<span>所属分类:</span>
-
-				<s:iterator value="@com.tjxjh.enumeration.ClubType@values()" id="ac">
-					<s:if test="name().equals(clubType)">${name}<br />
-					</s:if>
-				</s:iterator>
 				<s:property
 					value="@com.tjxjh.enumeration.ClubType@getChineseName(clubType)" />
 				<br />
-				<s:iterator value="clubs" id="ac">
-					<img src="${logoPath}" width="80px" height="80px" />
-					<br />
-					<a href="#">${name}</a>
-					<br /> 帮主:${user.name}<br />
+				<s:if test="clubs != null && clubs.size > 0">
+					<s:iterator value="#request.clubList.clubList" id="ac">
+						<img src="${logoPath}" width="80px" height="80px" />
+						<br />
+						<a href="clubMain?club.id=${id }">${name}</a>
+						<br /> 帮主:${user.name}<br />
 							帮众:${memberNumber}<br /> 简介：${briefIntroduction}<br /> 类型：<s:property
-						value="type.name" />
-					<br /> 人气：${popularity} <br />
+							value="type.name" />
+						<br /> 人气：${popularity} <br />
 					活跃度:${liveness}
 				<br />
-				</s:iterator>
-				<br /> 当前第${page.currentPage}页&nbsp;共${page.pageNumber}页 <a
+					</s:iterator>
+				</s:if>
+				<s:else>
+					<span>暂无此类社团</span>
+				</s:else>
+				<br /> 
+				<w:page url="school?school.id=%{school.id}&clubType=%{clubType}"  value="#request.clubList.page" />
+				
+			<!--	当前第${page.currentPage}页&nbsp;共${page.pageNumber}页 <a
 					href="<%=path%>/school?school.id=${school.id}&clubType=${clubType}&currentPage=${page.currentPage-1}&totalPageNumber=${page.pageNumber}"
 					target="_self">上一页</a>&nbsp; <a
 					href="<%=path%>/school?school.id=${school.id}&clubType=${clubType}&currentPage=${page.currentPage+1}&totalPageNumber=${page.pageNumber}"
-					target="_self">下一页</a>
+					target="_self">下一页</a>  -->
 			</div>
 		</div>
 	</div>

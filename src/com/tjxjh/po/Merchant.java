@@ -27,7 +27,7 @@ import com.tjxjh.enumeration.MerchantType;
  */
 @Entity
 @Table(name = "merchant", catalog = "xiaojh")
-public class Merchant implements java.io.Serializable
+public class Merchant implements java.io.Serializable,Comparable<Merchant>
 {
 	// Fields
 	private Integer id;
@@ -310,7 +310,7 @@ public class Merchant implements java.io.Serializable
 		this.popularity = popularity;
 	}
 	
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne(fetch = FetchType.EAGER)
 	@JoinColumn(name = "user_id", nullable = false)
 	public User getUser()
 	{
@@ -421,5 +421,11 @@ public class Merchant implements java.io.Serializable
 	public void setMerchantName(String merchantName)
 	{
 		this.merchantName = merchantName;
+	}
+
+	@Override
+	public int compareTo(Merchant o) {
+		// TODO Auto-generated method stub
+		return o.getId()-this.getId();
 	}
 }

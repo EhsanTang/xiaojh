@@ -4,10 +4,11 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-
 import javax.annotation.Resource;
+import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
 import org.apache.struts2.ServletActionContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -16,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.opensymphony.xwork2.ActionContext;
 import com.tjxjh.enumeration.OnlineActivityStatus;
 import com.tjxjh.enumeration.TalkingUrlType;
+import com.tjxjh.enumeration.UserStatus;
+import com.tjxjh.po.Activity;
 import com.tjxjh.po.OnlineActivity;
 import com.tjxjh.po.Club;
 import com.tjxjh.po.Merchant;
@@ -23,6 +26,7 @@ import com.tjxjh.po.Talking;
 import com.tjxjh.po.User;
 import com.tjxjh.util.DeleteSource;
 import com.tjxjh.util.FileUtil;
+import com.tjxjh.util.GetRequsetResponse;
 import com.tjxjh.util.ImageCutAndZoom;
 
 import cn.cafebabe.autodao.pojo.Page;
@@ -54,13 +58,20 @@ public class OnlineActivityService extends BaseService{
 		System.out.println("----------------------"+talking.getId());
 		activity.setTalking(talking);
 		activity.setStatus(OnlineActivityStatus.UNDERWAY);
-		return super.save(activity);
+		super.save(activity);
+		talking.setText("<a href='getOnlineActivityById?onlineactivity.id="+activity.getId()+"' target='_blank'>"+activity.getTittle()+"</a>");
+		talkingService.update(talking);
+		return true;
 	}
 	@SuppressWarnings("unchecked")
 	@Transactional(readOnly = true, propagation=Propagation.SUPPORTS)   
 	public OnlineActivity findByHql(User user,Merchant merchant,Club club,OnlineActivity activity){
 			List<OnlineActivity> list=null;
-			String hql="from OnlineActivity oa where oa.id=? and ( 1=1 ";
+			//校江湖管理员
+			if(user.getStatus()==UserStatus.ADMIN){
+				return this.findById(activity.getId());
+			}
+			String hql="from OnlineActivity oa where oa.id=? and ( 1=3 ";//1=3永远不成立，当所有都为空时，返回null
 			if(user!=null&&user.getId()!=null){
 				hql=hql+"or oa.user.id="+user.getId();
 			}
@@ -350,7 +361,50 @@ public class OnlineActivityService extends BaseService{
 //	public void setTalkingService(TalkingService talkingService) {
 //		this.talkingService = talkingService;
 //	}
+	public Integer getCanyuCookie(OnlineActivity a){
+		HttpServletRequest request=GetRequsetResponse.getRequest();
+		Cookie allCookie[]= request.getCookies();
 
+		if(allCookie!=null&&allCookie.length!=0)
+		 {
+		     for(int i=0;i<allCookie.length;i++)
+		     {
+		          String keyname= allCookie[i].getName();
+		          if(("onlinecanyu"+a.getId()).equals(keyname))
+		          {
+					  return -1;
+		          }
+		         
+		      }
+		 }
+		return 0;
+	}
+	public void deleteCnayuCookie(OnlineActivity tak){
+		HttpServletRequest request=GetRequsetResponse.getRequest();
+		Cookie allCookie[]= request.getCookies();
+		
+		if(allCookie!=null&&allCookie.length!=0)
+		 {
+		     for(int i=0;i<allCookie.length;i++)
+		     {
+		          String keyname= allCookie[i].getName();
+		          if(("onlinecanyu"+tak.getId()).equals(keyname))
+		          {
+		        	  HttpServletResponse response=GetRequsetResponse.getResponse();
+		        	  allCookie[i].setValue(null);
+		        	  allCookie[i].setMaxAge(0);
+		        	  response.addCookie(allCookie[i]);
+		          }
+		         
+		      }
+		 }
+	}
+	public void addCanyuCookie(OnlineActivity tak){
+		Cookie myCookie=new Cookie("onlinecanyu"+tak.getId(),"onlinecanyu"+tak.getId());
+		myCookie.setMaxAge(60*60*24*7);
+		HttpServletResponse response=GetRequsetResponse.getResponse();
+		response.addCookie(myCookie);
+	}
 
 	public TalkingService getTalkingService() {
 		return talkingService;

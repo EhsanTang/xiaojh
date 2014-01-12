@@ -3,6 +3,7 @@
 <struts>
 	<constant name="struts.action.extension" value=",action,do,jsp" />
 	<constant name="struts.objectFactory" value="spring" />
+	<constant name="struts.ognl.allowStaticMethodAccess" value="true" />
 	<constant name="struts.convention.package.locators.basePackage"
 		value="com.tjxjh.action" />
 	<constant name="struts.ui.theme" value="simple" />
@@ -16,18 +17,30 @@
 			<result>{1}.html</result>
 		</action>
 	</package>
-	<package name="authController" extends="struts-default">
+	<package name="myPackage" extends="struts-default">
 		<interceptors>
 			<interceptor name="authInterceptor" class="com.tjxjh.interceptor.AuthInterceptor" />
+			<interceptor name="keywordInterceptor"
+				class="com.tjxjh.interceptor.KeywordInterceptor" />
+			<interceptor name="clubPopularityInterceptor"
+				class="com.tjxjh.interceptor.ClubPopularityInterceptor" />
 			<interceptor-stack name="myInterceptors">
 				<interceptor-ref name="authInterceptor" />
+				<interceptor-ref name="clubPopularityInterceptor" />
+				<interceptor-ref name="keywordInterceptor" />
 				<interceptor-ref name="defaultStack" />
 			</interceptor-stack>
 		</interceptors>
 		<default-interceptor-ref name="myInterceptors" />
+
 		<global-results>
 			<result name="login" type="redirectAction">index</result>
 			<result name="main" type="redirectAction">index</result>
+			<result name="adminLogin" type="redirectAction">index</result>
+			<result name="error">/WEB-INF/web/forepart/error_500.jsp</result>
 		</global-results>
+		<global-exception-mappings>
+			<exception-mapping result="error" exception="java.lang.Exception" />
+		</global-exception-mappings>
 	</package>
 </struts>
